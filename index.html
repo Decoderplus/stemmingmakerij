@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Kamer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 14px;
+      background: rgba(0,0,0,0.45);
+      padding: 6px 14px;
+      border-radius: 6px;
+      pointer-events: none;
+      user-select: none;
+    }
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.75);
+    }
+    #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+    #crosshair::after  { height: 2px; width: 100%; top: 50%;  transform: translateY(-50%); }
+
+    /* #info en #crosshair pas tonen zodra de wereld start */
+    #info, #crosshair { display: none; }
+
+    /* ── Startscherm / menu / credits / laadscherm ─────────────────────── */
+    #overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 38%, #2a1c11 0%, #150f0a 55%, #080605 100%);
+      color: #f0d9b6;
+      font-family: Georgia, 'Times New Roman', serif;
+      user-select: none;
+    }
+    #overlay .scherm {
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; padding: 40px; max-width: 760px;
+      animation: opkomen 0.8s ease both;
+    }
+    #overlay .scherm.verborgen { display: none; }
+    @keyframes opkomen { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+    #overlay .titel {
+      font-style: italic; font-weight: 700;
+      font-size: clamp(40px, 8vw, 86px); letter-spacing: 1px;
+      color: #ffe6bd;
+      text-shadow: 0 0 18px rgba(255,150,40,0.55), 0 0 46px rgba(220,90,20,0.35);
+      margin-bottom: 8px;
+    }
+    #overlay .ondertitel { font-size: 16px; color: #b89576; letter-spacing: 3px;
+      text-transform: uppercase; margin-bottom: 48px; }
+    #overlay .menu { display: flex; flex-direction: column; gap: 16px; width: 260px; }
+    #overlay .knop {
+      font-family: inherit; font-size: 22px; color: #f3dcbb;
+      background: rgba(70,40,18,0.25); border: 1px solid rgba(230,160,80,0.55);
+      padding: 14px 20px; border-radius: 8px; cursor: pointer;
+      letter-spacing: 1px; transition: background 0.25s, border-color 0.25s, transform 0.1s;
+    }
+    #overlay .knop:hover {
+      background: rgba(220,130,50,0.30); border-color: rgba(255,190,110,0.9);
+      text-shadow: 0 0 12px rgba(255,170,80,0.6);
+    }
+    #overlay .knop:active { transform: scale(0.97); }
+
+    #overlay .subtitel { font-size: 30px; color: #ffe6bd; margin-bottom: 22px;
+      text-shadow: 0 0 14px rgba(255,150,40,0.4); }
+    #overlay .credittekst { font-size: 18px; line-height: 1.7; color: #e3cba6;
+      margin-bottom: 34px; max-width: 640px; }
+    #overlay .credittekst p { margin-bottom: 16px; }
+
+    /* Laadscherm */
+    #overlay .laadbalk {
+      width: 300px; height: 6px; margin: 26px 0 14px;
+      background: rgba(120,80,40,0.25); border-radius: 4px; overflow: hidden;
+    }
+    #overlay .laadvulling {
+      width: 0; height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #c8741e, #ffce8a);
+      box-shadow: 0 0 12px rgba(255,170,80,0.7);
+    }
+    #laadscherm:not(.verborgen) .laadvulling { animation: vullen 3s linear forwards; }
+    @keyframes vullen { from { width: 0; } to { width: 100%; } }
+    #overlay .laadtekst { font-size: 15px; color: #b89576; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+  <div id="info">Klik om te beginnen &nbsp;|&nbsp; WASD = bewegen &nbsp;|&nbsp; Muis = kijken &nbsp;|&nbsp; ESC = stoppen</div>
+  <div id="crosshair"></div>
+
+  <!-- Startscherm / menu / credits / laadscherm -->
+  <div id="overlay">
+    <!-- Hoofdmenu -->
+    <div id="startscherm" class="scherm">
+      <div class="titel">Stemmingmakerij</div>
+      <div class="ondertitel">een filmische ervaring</div>
+      <div class="menu">
+        <button id="btnStart" class="knop">Start</button>
+        <button id="btnCredits" class="knop">Credits</button>
+      </div>
+    </div>
+
+    <!-- Credits -->
+    <div id="creditsscherm" class="scherm verborgen">
+      <div class="subtitel">Credits</div>
+      <div class="credittekst">
+        <p>Deze ervaring is gemaakt door Gijs Ververs, in samenwerking met Claude.</p>
+        <p>Gijs bouwde deze wereld zonder programmeerachtergrond, door in kleine, heldere stappen te werken: eerst de ruimte, dan de sfeer, dan het verhaal, en pas op het eind de finesse. Elke stap werd getest voordat de volgende begon. Wat niet klopte, werd benoemd en bijgesteld — niet alles tegelijk, maar één ding per keer.</p>
+        <p>Die werkwijze is wat dit mogelijk maakte. Niet door alles vooraf te overzien, maar door telkens de volgende kleine, weloverwogen keuze te maken. Precies datgene waar dit verhaal over gaat.</p>
+      </div>
+      <button id="btnTerug" class="knop">Terug naar menu</button>
+    </div>
+
+    <!-- Laadscherm -->
+    <div id="laadscherm" class="scherm verborgen">
+      <div class="titel">Stemmingmakerij</div>
+      <div class="laadbalk"><div class="laadvulling"></div></div>
+      <div class="laadtekst">De wereld laadt…</div>
+    </div>
+  </div>
+
+  <script>
+    // Besturing van het startscherm (los van de 3D-wereld, die achter de
+    // overlay al opbouwt). Start → 3 s laadscherm → wereld zichtbaar.
+    (function () {
+      const overlay   = document.getElementById('overlay');
+      const menu      = document.getElementById('startscherm');
+      const credits   = document.getElementById('creditsscherm');
+      const laad       = document.getElementById('laadscherm');
+      const toon = (el) => { for (const s of [menu, credits, laad]) s.classList.add('verborgen'); el.classList.remove('verborgen'); };
+
+      document.getElementById('btnCredits').addEventListener('click', () => toon(credits));
+      document.getElementById('btnTerug').addEventListener('click', () => toon(menu));
+
+      document.getElementById('btnStart').addEventListener('click', () => {
+        toon(laad);                                  // laadscherm 3 seconden
+        setTimeout(() => {
+          overlay.remove();                          // wereld onthullen
+          document.getElementById('info').style.display = 'block';
+          document.getElementById('crosshair').style.display = 'block';
+        }, 3000);
+      });
+    })();
+  </script>
+
+  <!-- Three.js via CDN (geen installatie nodig) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+    // ── Scene ──────────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+
+    // ── Renderer ───────────────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // STAP 2 — filmische tone mapping (de OutputPass past dit toe)
+    const TONE_EXPOSURE = 1.15;      // algehele helderheid (hoger = lichter)
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = TONE_EXPOSURE;
+    document.body.appendChild(renderer.domElement);
+
+    // ── Camera (ooghoogte 1.7 m) ───────────────────────────────────────────
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.7, 0);
+
+    // ── Afmetingen kamer: 12 m lang (Z), 6 m breed (X), 3.5 m hoog (Y) ────
+    const L = 12, B = 6, H = 3.5;
+
+    // ── Procedurele textuur: visgraat-parket (licht hout) ──────────────────
+    function maakVisgraatTextuur() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 512;
+      const ctx = c.getContext('2d');
+
+      // Achtergrond (voegkleur)
+      ctx.fillStyle = '#b89b6e';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Lichte houttinten, willekeurig per plank
+      const tinten = ['#d8b483', '#e0bd8c', '#cfa874', '#dcb789', '#d3ad7a'];
+      const plankL = 96;   // lengte plank
+      const plankB = 32;   // breedte plank
+      let teller = 0;
+
+      // Eén visgraat-tegel = twee planken in een L (90° t.o.v. elkaar).
+      // We vullen het canvas met blokken; per blok wisselt de oriëntatie.
+      for (let y = -plankL; y < 512 + plankL; y += plankB * 2) {
+        for (let x = -plankL; x < 512 + plankL; x += plankL) {
+          const kleur = tinten[teller % tinten.length];
+          teller++;
+
+          // Plank 1: gedraaid +45°
+          tekenPlank(ctx, x, y, plankL, plankB, kleur, Math.PI / 4);
+          // Plank 2: gedraaid -45°, ingehaakt
+          tekenPlank(ctx, x + plankL * 0.5, y + plankB, plankL, plankB,
+                     tinten[(teller + 2) % tinten.length], -Math.PI / 4);
+        }
+      }
+
+      function tekenPlank(ctx, cx, cy, len, br, kleur, hoek) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(hoek);
+        ctx.fillStyle = kleur;
+        ctx.fillRect(-len / 2, -br / 2, len, br);
+        // donkere voeg rondom
+        ctx.strokeStyle = 'rgba(90,60,30,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-len / 2, -br / 2, len, br);
+        // subtiele nerf
+        ctx.strokeStyle = 'rgba(120,85,45,0.25)';
+        ctx.lineWidth = 1;
+        for (let i = -len / 2 + 6; i < len / 2; i += 7) {
+          ctx.beginPath();
+          ctx.moveTo(i, -br / 2 + 2);
+          ctx.lineTo(i, br / 2 - 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(B / 2, L / 2);   // herhaal over de hele vloer
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    // ── Procedurele textuur: zwart-wit diamant (harlekijn) voor tapijt ─────
+    function maakDiamantTextuur() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const n = 4;              // aantal ruiten per as
+      const s = 256 / n;        // celgrootte
+
+      ctx.fillStyle = '#f2f2f0';  // gebroken wit
+      ctx.fillRect(0, 0, 256, 256);
+
+      // Diamantmotief = schaakbord gedraaid 45° → hier direct als ruiten.
+      ctx.fillStyle = '#101010';  // zwart
+      for (let r = 0; r < n; r++) {
+        for (let k = 0; k < n; k++) {
+          if ((r + k) % 2 === 0) continue;
+          const cx = (k + 0.5) * s;
+          const cy = (r + 0.5) * s;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - s / 2);
+          ctx.lineTo(cx + s / 2, cy);
+          ctx.lineTo(cx, cy + s / 2);
+          ctx.lineTo(cx - s / 2, cy);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2, 2);
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    // Materialen
+    const matVloer   = new THREE.MeshLambertMaterial({ map: maakVisgraatTextuur() }); // visgraat-parket
+    const matPlafond = new THREE.MeshLambertMaterial({ color: 0x141414 }); // bijna zwart (industrieel)
+    const matMuur    = new THREE.MeshLambertMaterial({ color: 0xD4C9B0 }); // zandkleur
+
+    function maakVlak(breedte, hoogte, materiaal, x, y, z, rx, ry) {
+      const geo  = new THREE.PlaneGeometry(breedte, hoogte);
+      const mesh = new THREE.Mesh(geo, materiaal);
+      mesh.position.set(x, y, z);
+      mesh.rotation.x = rx ?? 0;
+      mesh.rotation.y = ry ?? 0;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+    }
+
+    // Vloer
+    maakVlak(B, L, matVloer,   0,       0,    0,    -Math.PI/2, 0);
+
+    // Rond tapijt in het midden (diameter ~4 m) met zwart-wit diamantmotief
+    const matTapijt = new THREE.MeshLambertMaterial({ map: maakDiamantTextuur() });
+    const tapijt = new THREE.Mesh(new THREE.CircleGeometry(2, 64), matTapijt);
+    tapijt.rotation.x = -Math.PI / 2;
+    tapijt.position.set(0, 0.01, 0);   // net boven de vloer (geen z-fighting)
+    tapijt.receiveShadow = true;
+    scene.add(tapijt);
+    // Plafond
+    maakVlak(B, L, matPlafond, 0,       H,    0,     Math.PI/2, 0);
+    // Korte wanden: mat zwart
+    const matZwarteWand = new THREE.MeshLambertMaterial({ color: 0x121212 });
+    // Achterwand  (z = -L/2)
+    maakVlak(B, H, matZwarteWand, 0,  H/2, -L/2,  0,         0);
+    // Voorwand    (z = +L/2)
+    maakVlak(B, H, matZwarteWand, 0,  H/2,  L/2,  0,   Math.PI);
+    // Linkerwand  (x = -B/2) — donkere achtergrond achter het touwtjesgordijn
+    const matDonkereWand = new THREE.MeshLambertMaterial({ color: 0x1a1512 });
+    maakVlak(L, H, matDonkereWand, -B/2, H/2, 0,   0,    Math.PI/2);
+    // ── Rechterwand (x = +B/2): 3 grote ramen + frame ─────────────────────
+    // Het glas is doorzichtig zodat je de foto-backdrop erachter ziet.
+    const matFrame = new THREE.MeshLambertMaterial({ color: 0x2b2b2b }); // donker metaal
+    const matGlas  = new THREE.MeshPhongMaterial({
+      color: 0xaaccdd, transparent: true, opacity: 0.12,
+      shininess: 90, side: THREE.DoubleSide, depthWrite: false
+    });
+
+    const raamWand = new THREE.Group();
+    const frameDik = 0.10;             // dikte van een frame-stijl
+    const xWand    = B/2 - 0.02;       // net binnen de wand
+
+    // Glas: één doorlopend doorzichtig vlak over de hele wand
+    const glas = new THREE.Mesh(new THREE.PlaneGeometry(L, H), matGlas);
+    glas.position.set(0, H/2, 0);
+    glas.rotation.y = -Math.PI/2;
+    raamWand.add(glas);
+
+    // Framebalken (dunne boxen). Verticaal: 4 stijlen verdelen de wand in 3 ramen.
+    function frameBalk(lenZ, lenY, z, y) {
+      const g = new THREE.BoxGeometry(0.06, lenY, lenZ);
+      const m = new THREE.Mesh(g, matFrame);
+      m.position.set(xWand, y, z);
+      raamWand.add(m);
+    }
+    // Horizontale boven- en onderregel
+    frameBalk(L, frameDik, 0, H - frameDik/2);
+    frameBalk(L, frameDik, 0, frameDik/2);
+    // Verticale stijlen op -L/2, -L/6, +L/6, +L/2 → 3 gelijke ramen
+    for (const z of [-L/2, -L/6, L/6, L/2]) {
+      const g = new THREE.BoxGeometry(0.06, H, frameDik);
+      const m = new THREE.Mesh(g, matFrame);
+      m.position.set(xWand, H/2, z);
+      raamWand.add(m);
+    }
+    scene.add(raamWand);
+
+    // ╔═══════════════════════════════════════════════════════════════════╗
+    // ║  ACHTERGRONDEN achter de glazen wand — 3 afbeeldingen + crossfade  ║
+    // ║  Zet de bestanden in de projectmap. Wissel vanuit een cue met:     ║
+    // ║      wisselAchtergrond('normaal')  /  'duister'  /  'hemel'        ║
+    // ╚═══════════════════════════════════════════════════════════════════╝
+    const ACHTERGRONDEN = {
+      normaal: '5-LocHal-Library-interior-design-image-by-Ossip-Architectuurfotografie.jpg',
+      duister: 'duister.png',
+      hemel:   'hemel.png',
+    };
+    const CROSSFADE_SEC = 2.0;       // duur van de zachte overgang (seconden)
+
+    // Afmeting/plaats van het achtergrondvlak (ruim groter dan het raam)
+    const BACKDROP_AFSTAND  = 4.5;   // meter buiten de glazen wand
+    const BACKDROP_BREEDTE  = 28;    // meter (langs Z)
+    const BACKDROP_HOOGTE   = 14;    // meter (langs Y)
+    const BACKDROP_HOOGTE_Y = 4;     // verticaal middelpunt
+
+    // Laadt een afbeelding (zelfde spiegeling als voorheen aangehouden)
+    const _texLoader = new THREE.TextureLoader();
+    function ladAchtergrondTex(bestand) {
+      const tex = _texLoader.load(bestand, undefined, undefined,
+        () => console.warn('Achtergrond niet gevonden:', bestand));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.x = -1; tex.offset.x = 1;   // horizontaal spiegelen
+      return tex;
+    }
+
+    // Laad ALLE achtergronden meteen vooraf in een cache. Anders is de nieuwe
+    // textuur bij een wissel nog zwart (nog niet geladen) → vandaar het
+    // "naar zwart en dan ineens" effect. Nu staat elke afbeelding direct klaar.
+    const achtergrondTex = {};
+    for (const naam in ACHTERGRONDEN) achtergrondTex[naam] = ladAchtergrondTex(ACHTERGRONDEN[naam]);
+
+    const _geoBackdrop = new THREE.PlaneGeometry(BACKDROP_BREEDTE, BACKDROP_HOOGTE);
+    // Achtervlak: toont altijd de huidige afbeelding, vol zichtbaar.
+    const matAchter = new THREE.MeshBasicMaterial(
+      { map: achtergrondTex.normaal, side: THREE.DoubleSide });
+    const backAchter = new THREE.Mesh(_geoBackdrop, matAchter);
+    backAchter.position.set(B/2 + BACKDROP_AFSTAND, BACKDROP_HOOGTE_Y, 0);
+    backAchter.rotation.y = -Math.PI/2;
+    scene.add(backAchter);
+    // Voorvlak: hierover vervaagt de nieuwe afbeelding tijdens een wissel.
+    const matVoor = new THREE.MeshBasicMaterial(
+      { transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const backVoor = new THREE.Mesh(_geoBackdrop, matVoor);
+    backVoor.position.set(B/2 + BACKDROP_AFSTAND - 0.05, BACKDROP_HOOGTE_Y, 0);
+    backVoor.rotation.y = -Math.PI/2;
+    scene.add(backVoor);
+
+    // Crossfade-toestand (de animatielus laat het voorvlak van 0 → 1 vervagen)
+    let achtergrondFadeActief = false, achtergrondFadeT = 0;
+    function wisselAchtergrond(naam) {
+      const tex = achtergrondTex[naam];
+      if (!tex) { console.warn('Onbekende achtergrond:', naam); return; }
+      matVoor.map = tex;                 // al voorgeladen → meteen zichtbaar
+      matVoor.opacity = 0;
+      matVoor.needsUpdate = true;
+      achtergrondFadeActief = true; achtergrondFadeT = 0;
+    }
+
+    // ── Industriële plafond-elementen (buizen + luchtkanalen) ──────────────
+    const matBuis   = new THREE.MeshLambertMaterial({ color: 0x3a3a3a }); // donkergrijs
+    const matKanaal = new THREE.MeshLambertMaterial({ color: 0x1c1c1c }); // bijna zwart
+
+    // Vijf horizontale buizen (cilinders) die over de lengte (Z) lopen
+    const buisData = [
+      { x: -2.2, y: H - 0.25, r: 0.10 },
+      { x: -1.0, y: H - 0.20, r: 0.07 },
+      { x:  0.4, y: H - 0.30, r: 0.13 },
+      { x:  1.6, y: H - 0.22, r: 0.08 },
+      { x:  2.4, y: H - 0.28, r: 0.11 },
+    ];
+    for (const b of buisData) {
+      const geo = new THREE.CylinderGeometry(b.r, b.r, L, 16);
+      const buis = new THREE.Mesh(geo, matBuis);
+      buis.rotation.x = Math.PI / 2;        // leg de cilinder horizontaal langs Z
+      buis.position.set(b.x, b.y, 0);
+      buis.castShadow = true;
+      scene.add(buis);
+    }
+
+    // Twee rechthoekige luchtkanalen (balken) die over de breedte (X) lopen
+    const kanaalData = [
+      { z: -3.5, y: H - 0.30 },
+      { z:  2.8, y: H - 0.30 },
+    ];
+    for (const k of kanaalData) {
+      const geo = new THREE.BoxGeometry(B, 0.45, 0.55);
+      const kanaal = new THREE.Mesh(geo, matKanaal);
+      kanaal.position.set(0, k.y, k.z);
+      kanaal.castShadow = true;
+      scene.add(kanaal);
+    }
+
+    // ── Touwtjesgordijn linkerwand (x = -B/2) via InstancedMesh ────────────
+    // Heel veel dunne verticale cilinders in één tekenopdracht → blijft snel.
+    const draadPalet = [0xcc1f1f, 0xff6a00, 0xffc20a, 0x7a0d0d]; // rood, oranje, geel, donkerrood
+    const aantalDraden = 700;                          // dichtheid van het gordijn
+    const draadGeo = new THREE.CylinderGeometry(0.011, 0.011, H, 5); // dun, weinig segmenten
+    const draadMat = new THREE.MeshLambertMaterial();  // kleur per instance
+    const gordijn = new THREE.InstancedMesh(draadGeo, draadMat, aantalDraden);
+    gordijn.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+    const dummy  = new THREE.Object3D();
+    const tint   = new THREE.Color();
+    for (let i = 0; i < aantalDraden; i++) {
+      // gelijkmatig over de lengte (Z), met kleine willekeurige variatie
+      const z = -L/2 + ((i + 0.5) / aantalDraden) * L + (Math.random() - 0.5) * 0.012;
+      const x = -B/2 + 0.06 + Math.random() * 0.04;   // net vóór de wand, lichte diepte
+      dummy.position.set(x, H/2, z);
+      dummy.updateMatrix();
+      gordijn.setMatrixAt(i, dummy.matrix);
+      tint.setHex(draadPalet[Math.floor(Math.random() * draadPalet.length)]);
+      gordijn.setColorAt(i, tint);
+    }
+    gordijn.instanceMatrix.needsUpdate = true;
+    scene.add(gordijn);
+
+    // ── Groot beeldscherm tegen de draadwand (links, x = -B/2) ────────────
+    const schermB = 3.0, schermH = 1.7;       // liggend: 3 m breed, 1,7 m hoog
+    const schermY = 1.7;                       // op ooghoogte
+    const schermZ = -2.2;                      // plek langs de wand
+    const schermX = -B/2 + 0.12;               // net vóór het gordijn
+
+    // Zwart kader (box, iets groter dan het scherm)
+    const kader = new THREE.Mesh(
+      new THREE.BoxGeometry(0.10, schermH + 0.16, schermB + 0.16),
+      new THREE.MeshLambertMaterial({ color: 0x080808 })
+    );
+    kader.position.set(schermX - 0.02, schermY, schermZ);
+    scene.add(kader);
+
+    // Videoscherm: speelt 3 delen naadloos achter elkaar af (story1/2/3),
+    // alsof het één doorlopende video is, met geluid.
+    const STORY_BESTANDEN = ['story1.mp4', 'story2.mp4', 'story3.mp4']; // ← in de projectmap
+    const delen = STORY_BESTANDEN.map((bestand) => {
+      const v = document.createElement('video');
+      v.src = bestand;
+      v.muted = false;            // geluid AAN
+      v.loop = false;             // niet los herhalen; we schakelen zelf door
+      v.playsInline = true;
+      v.preload = 'auto';         // alle delen vast voorladen → naadloze overgang
+      v.crossOrigin = 'anonymous';
+      v.addEventListener('error', () =>
+        console.warn('Videodeel niet gevonden of niet afspeelbaar:', bestand));
+      const tex = new THREE.VideoTexture(v);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return { bestand, v, tex, duur: 0 };
+    });
+    // Onthoud de duur van elk deel zodra bekend (voor de globale tijdlijn)
+    delen.forEach((d) => d.v.addEventListener('loadedmetadata',
+      () => { d.duur = d.v.duration; }));
+
+    // Prompt die op het scherm staat zolang de tv nog uit is.
+    function maakSchermPrompt(regel1, regel2) {
+      const c = document.createElement('canvas');
+      c.width = 1280; c.height = 720;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#dfeaff'; ctx.shadowColor = '#3aa0ff'; ctx.shadowBlur = 24;
+      ctx.font = 'bold 78px sans-serif';
+      ctx.fillText(regel1, c.width / 2, c.height / 2 - 45);
+      ctx.font = '44px sans-serif';
+      ctx.fillText(regel2, c.width / 2, c.height / 2 + 55);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const promptTex = maakSchermPrompt('Druk spatiebalk', 'om de tv aan te zetten');
+
+    const matScherm = new THREE.MeshBasicMaterial({ map: promptTex });
+    const schermVlak = new THREE.Mesh(
+      new THREE.PlaneGeometry(schermB, schermH), matScherm
+    );
+    schermVlak.rotation.y = Math.PI / 2;       // gericht de kamer in (+X)
+    schermVlak.position.set(schermX + 0.04, schermY, schermZ);
+    scene.add(schermVlak);
+
+    // Verhouding bewaren: pas het vlak aan de echte videoverhouding aan
+    // (op basis van het eerste deel; geen uitrekken).
+    delen[0].v.addEventListener('loadedmetadata', () => {
+      const videoVerh = delen[0].v.videoWidth / delen[0].v.videoHeight;
+      const kaderVerh = schermB / schermH;
+      let w = schermB, h = schermH;
+      if (videoVerh >= kaderVerh) h = schermB / videoVerh;  // breed → hoogte krimpt
+      else                        w = schermH * videoVerh;  // smal → breedte krimpt
+      schermVlak.geometry.dispose();
+      schermVlak.geometry = new THREE.PlaneGeometry(w, h);
+    });
+
+    // ── Naadloze afspeellijst + globale tijdlijn ─────────────────────────
+    let huidigDeel = 0;
+    // Globale tijd = som van de afgespeelde delen + positie in het huidige deel.
+    function globaleTijd() {
+      let t = 0;
+      for (let i = 0; i < huidigDeel; i++) t += delen[i].duur;
+      return t + delen[huidigDeel].v.currentTime;
+    }
+    function speelDeel(i) {
+      huidigDeel = i;
+      matScherm.map = delen[i].tex;        // toon dit deel op het scherm
+      matScherm.needsUpdate = true;
+      delen[i].v.currentTime = 0;
+      delen[i].v.play().catch(() => {});
+    }
+    // Zodra een deel klaar is: meteen door naar het volgende.
+    // Na het laatste deel terug naar het eerste (de hele reeks herhaalt).
+    delen.forEach((d, i) => d.v.addEventListener('ended', () => {
+      speelDeel((i + 1) % delen.length);
+    }));
+
+    // ── Tv aanzetten: automatisch na 10 s, of met spatiebalk bij het scherm ──
+    const TV_AUTO_SEC = 10;        // na hoeveel seconden de tv vanzelf aangaat
+    const TV_SPATIE_AFSTAND = 6;   // binnen hoeveel meter spatiebalk de tv aanzet
+    let tvAan = false;
+    function zetTvAan() {
+      if (tvAan) return;
+      tvAan = true;
+      speelDeel(0);   // start de afspeellijst bij deel 1 (zet ook het scherm op video)
+    }
+    // Spatiebalk werkt wanneer je dicht genoeg bij het scherm staat
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || tvAan) return;
+      const dx = camera.position.x - schermX, dz = camera.position.z - schermZ;
+      if (Math.hypot(dx, dz) <= TV_SPATIE_AFSTAND) zetTvAan();
+    });
+    // Automatisch aftellen (start zodra de game begint; zie pointer-lock hieronder)
+    let tvAftellenGestart = false;
+    function startTvAftellen() {
+      if (tvAftellenGestart) return;
+      tvAftellenGestart = true;
+      setTimeout(zetTvAan, TV_AUTO_SEC * 1000);
+    }
+
+    // ── Geluidseffecten via Web Audio (los van het videogeluid) ──────────
+    // Web Audio is gemaakt voor korte effecten die op een willekeurig moment
+    // moeten starten; betrouwbaarder dan losse Audio()-spelers. Het mengt met
+    // het videogeluid (vervangt het niet).
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const effectBuffers = {};   // naam → gedecodeerde audio
+    async function ladEffect(naam, bestand) {
+      try {
+        const data = await (await fetch(bestand)).arrayBuffer();
+        effectBuffers[naam] = await audioCtx.decodeAudioData(data);
+      } catch (e) { console.warn('Geluidseffect niet geladen:', bestand, e.message); }
+    }
+    ladEffect('dreun', 'effect1_dreun.mp3');   // bij 22 s (apocalyptisch)
+    ladEffect('swell', 'effect2_swell.mp3');   // bij 76 s (hemels)
+
+    // Volumeregeling voor de effecten (1.0 = origineel, 2.0 = dubbel zo luid)
+    const EFFECT_VOLUME = 2.0;
+    const effectGain = audioCtx.createGain();
+    effectGain.gain.value = EFFECT_VOLUME;
+    effectGain.connect(audioCtx.destination);
+
+    const EFFECT_FADE = 3.0;        // uitfade-duur aan het einde (seconden)
+    function speelEffect(naam) {
+      const buf = effectBuffers[naam];
+      if (!buf) { console.warn('Geluidseffect nog niet geladen:', naam); return; }
+      const bron = audioCtx.createBufferSource();
+      bron.buffer = buf;
+      const fade = audioCtx.createGain();   // eigen fade-regeling per afspeelbeurt
+      bron.connect(fade);
+      fade.connect(effectGain);             // daarna via de volumeregeling
+      const nu = audioCtx.currentTime;
+      const eind = buf.duration;
+      const startFade = Math.max(0, eind - EFFECT_FADE);
+      fade.gain.setValueAtTime(1, nu + startFade);
+      fade.gain.linearRampToValueAtTime(0, nu + eind);   // zacht uitfaden i.p.v. abrupt stoppen
+      bron.start();
+      bron.stop(nu + eind);
+    }
+
+    // De AudioContext start 'suspended' en moet ná een gebruikersactie hervat
+    // worden, anders blijft hij stil. Doe dat bij de eerste klik/toets.
+    function ontgrendelEffecten() {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    window.addEventListener('pointerdown', ontgrendelEffecten);
+    window.addEventListener('keydown',     ontgrendelEffecten);
+
+    // ╔═══════════════════════════════════════════════════════════════════╗
+    // ║  CUE-LIJST — koppel gebeurtenissen aan momenten in de video.       ║
+    // ║  Vul per cue in: 'tijd' = seconden in de video, 'actie' = wat er   ║
+    // ║  dan gebeurt. Pas gerust de tijden aan of voeg cues toe.           ║
+    // ╚═══════════════════════════════════════════════════════════════════╝
+    const cues = [
+      // Op 22 s: overgang naar de apocalyptische fase (beeld + licht + dreun)
+      { tijd: 22, actie: () => { console.log('🎬 CUE 1 (0:22): apocalyptisch'); wisselAchtergrond('duister'); zetLichtstand('apocalyptisch'); speelEffect('dreun'); } },
+      // Op 1:16 (76 s): overgang naar de hemelse fase (beeld + licht + swell)
+      { tijd: 76, actie: () => { console.log('🎬 CUE 2 (1:16): hemels');        wisselAchtergrond('hemel');   zetLichtstand('hemels');        speelEffect('swell'); } },
+    ];
+
+    // --- Motor van het cue-systeem (hier hoef je niets aan te passen) ---
+    // Werkt op de GLOBALE tijd (de 3 delen samen als één doorlopende video).
+    let cueVorigeTijd = 0;
+    function controleerCues() {
+      const t = globaleTijd();
+      // Hele reeks opnieuw begonnen? Zet alle cues weer 'klaar om te vuren'.
+      if (t < cueVorigeTijd - 0.5) cues.forEach(c => { c._gedaan = false; });
+      for (const c of cues) {
+        if (!c._gedaan && t >= c.tijd) { c._gedaan = true; c.actie(); }
+      }
+      cueVorigeTijd = t;
+    }
+    delen.forEach((d) => d.v.addEventListener('timeupdate', controleerCues));
+
+    // Zacht schijnsel van het scherm de kamer in
+    const schermLicht = new THREE.PointLight(0x9fc6ff, 1.2, 8);
+    schermLicht.position.set(schermX + 0.6, schermY, schermZ);
+    scene.add(schermLicht);
+
+    // ── Lichtgevende cursieve tekst 'Stemmingmakerij' ─────────────────────
+    function maakTekstVlak(tekst) {
+      const c = document.createElement('canvas');
+      c.width = 2048; c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.font = 'italic 700 200px Georgia, "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Gloed: meerdere lagen shadowBlur
+      ctx.fillStyle = '#eaf6ff';
+      ctx.shadowColor = '#46c8ff';
+      for (const blur of [40, 28, 16, 8]) {
+        ctx.shadowBlur = blur;
+        ctx.fillText(tekst, c.width / 2, c.height / 2);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    const tekstVlak = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.0, 0.5),       // kleiner; verhouding 4:1 zoals het canvas
+      new THREE.MeshBasicMaterial({ map: maakTekstVlak('Stemmingmakerij'), transparent: true })
+    );
+    tekstVlak.rotation.y = Math.PI / 2;        // gericht de kamer in
+    tekstVlak.position.set(-B/2 + 0.10, 2.0, 2.2);  // in de vrije ruimte rechts van het scherm
+    scene.add(tekstVlak);
+
+    // ── Doorlopende U-bank: linkerwand + beide korte (brede) kanten ───────
+    const bankDiepte = 0.6;            // de kamer in
+    const bankHoog   = 0.40;           // zithoogte
+    const matHout = new THREE.MeshLambertMaterial({ color: 0x8a5a2b });
+
+    // Houten zitbanken (massieve blokken) langs drie wanden
+    // Linkerwand (langs Z, volle lengte)
+    const bankLinks = new THREE.Mesh(
+      new THREE.BoxGeometry(bankDiepte, bankHoog, L), matHout);
+    bankLinks.position.set(-B/2 + bankDiepte/2, bankHoog/2, 0);
+    scene.add(bankLinks);
+    // Achterwand (z = -L/2, langs X, volle breedte)
+    const bankAchter = new THREE.Mesh(
+      new THREE.BoxGeometry(B, bankHoog, bankDiepte), matHout);
+    bankAchter.position.set(0, bankHoog/2, -L/2 + bankDiepte/2);
+    scene.add(bankAchter);
+    // Voorwand (z = +L/2, langs X, volle breedte)
+    const bankVoor = new THREE.Mesh(
+      new THREE.BoxGeometry(B, bankHoog, bankDiepte), matHout);
+    bankVoor.position.set(0, bankHoog/2, L/2 - bankDiepte/2);
+    scene.add(bankVoor);
+
+    // Losse vierkante zitkussens, afwisselend rood/wit/zwart/oranje,
+    // doorlopend rond de drie wanden.
+    const kussenPalet = [0xcc2222, 0xf2f2f2, 0x111111, 0xff6a00];
+    const kussenMaat = 0.5, kussenDik = 0.14, kussenStap = 0.55;
+    let kIndex = 0;
+    function legKussens(x0, z0, x1, z1) {
+      const dx = x1 - x0, dz = z1 - z0;
+      const len = Math.hypot(dx, dz);
+      const n = Math.max(1, Math.round(len / kussenStap));
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        const kussen = new THREE.Mesh(
+          new THREE.BoxGeometry(kussenMaat, kussenDik, kussenMaat),
+          new THREE.MeshLambertMaterial({ color: kussenPalet[kIndex % kussenPalet.length] })
+        );
+        kussen.position.set(x0 + dx * t, bankHoog + kussenDik/2, z0 + dz * t);
+        kussen.castShadow = true;
+        scene.add(kussen);
+        kIndex++;
+      }
+    }
+    const cx = -B/2 + bankDiepte/2 + 0.02;   // kussen-as langs linkerwand
+    const cz1 = -L/2 + bankDiepte/2 + 0.02;  // kussen-as langs achterwand
+    const cz2 =  L/2 - bankDiepte/2 - 0.02;  // kussen-as langs voorwand
+    legKussens(cx, -L/2 + 0.4, cx, L/2 - 0.4);   // linkerwand
+    legKussens(-B/2 + 0.6, cz1, B/2 - 0.4, cz1); // achterwand
+    legKussens(-B/2 + 0.6, cz2, B/2 - 0.4, cz2); // voorwand
+
+    // ── Cirkelbank op het tapijt (open aan de tv-kant, -X) ────────────────
+    // Meerdere gebogen modules (annulaire sectoren) vormen samen een cirkel.
+    const cbInner  = 1.67, cbOuter = 2.10;   // smallere zitring (~0,43 m), tot over de tapijtrand (r=2)
+    const cbLegH   = 0.30,  cbSeatDik = 0.15; // poothoogte en dikte zitting
+    const matRoodZit = new THREE.MeshLambertMaterial({ color: 0xc0241f }); // rood
+    const matPoot    = new THREE.MeshLambertMaterial({ color: 0xc9a36a }); // licht hout
+    const openHalf = 0.60;                    // halve opening (rad) richting tv (-X)
+    const aStart = Math.PI + openHalf;
+    const aEnd   = 3 * Math.PI - openHalf;
+    const nSeg   = 8;                          // meer losse bankjes
+    const segTot = (aEnd - aStart) / nSeg;
+    const tussen = 0.12;                       // duidelijker tussenruimte tussen de bankjes
+
+    // shape-coördinaten → wereld-XZ (na rotatie wordt shape-Y → -Z)
+    const cbMap = (r, a) => [r * Math.cos(a), -r * Math.sin(a)];
+
+    for (let i = 0; i < nSeg; i++) {
+      const a0 = aStart + i * segTot + tussen / 2;
+      const a1 = aStart + (i + 1) * segTot - tussen / 2;
+
+      // Gebogen rode zitting (ringsector)
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, cbOuter, a0, a1, false);
+      shape.absarc(0, 0, cbInner, a1, a0, true);
+      const geo = new THREE.ExtrudeGeometry(shape,
+        { depth: cbSeatDik, bevelEnabled: false, curveSegments: 24 });
+      const zit = new THREE.Mesh(geo, matRoodZit);
+      zit.rotation.x = -Math.PI / 2;     // plat leggen
+      zit.position.y = cbLegH;           // bovenop de pootjes
+      zit.castShadow = true;
+      scene.add(zit);
+
+      // Lichte houten pootjes onder het segment
+      for (const a of [a0 + 0.06, (a0 + a1) / 2, a1 - 0.06]) {
+        for (const r of [cbInner + 0.12, cbOuter - 0.12]) {
+          const [px, pz] = cbMap(r, a);
+          const poot = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, cbLegH, 10), matPoot);
+          poot.position.set(px, cbLegH / 2, pz);
+          poot.castShadow = true;
+          scene.add(poot);
+        }
+      }
+    }
+
+    // ── Cluster bolvormige hanglampen boven het midden ───────────────────
+    // Witte lichtgevende bollen aan dunne kabels van verschillende lengtes.
+    const matKabel = new THREE.MeshLambertMaterial({ color: 0x222222 });
+    const matBol   = new THREE.MeshBasicMaterial({ color: 0xfff1d8 }); // zelf-verlicht, warm wit
+
+    // (x, z) dicht bij elkaar rond het midden, met eigen hanghoogte (bol-midden)
+    const lampen = [
+      { x:  0.00, z:  0.00, y: 2.05, r: 0.16 },
+      { x: -0.45, z:  0.20, y: 2.45, r: 0.12 },
+      { x:  0.40, z: -0.25, y: 2.30, r: 0.13 },
+      { x:  0.25, z:  0.45, y: 2.60, r: 0.11 },
+      { x: -0.30, z: -0.40, y: 2.20, r: 0.14 },
+      { x:  0.55, z:  0.15, y: 2.50, r: 0.10 },
+      { x: -0.55, z: -0.05, y: 2.35, r: 0.12 },
+    ];
+
+    const hangLampen = [];   // verzameld zodat de lichtstanden ze samen kunnen dimmen
+    let eersteLamp = true;
+    for (const L0 of lampen) {
+      // Dunne kabel van het plafond tot de bovenkant van de bol
+      const kabelLen = H - (L0.y + L0.r);
+      const kabel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.006, 0.006, kabelLen, 6), matKabel);
+      kabel.position.set(L0.x, L0.y + L0.r + kabelLen/2, L0.z);
+      scene.add(kabel);
+
+      // Lichtgevende bol
+      const bol = new THREE.Mesh(new THREE.SphereGeometry(L0.r, 20, 16), matBol);
+      bol.position.set(L0.x, L0.y, L0.z);
+      scene.add(bol);
+
+      // Warme lichtbron in de bol (één werpt zachte schaduw, rest vult op)
+      const lamp = new THREE.PointLight(0xffd9a0, eersteLamp ? 1.1 : 0.5, 9, 2);
+      lamp.position.set(L0.x, L0.y, L0.z);
+      if (eersteLamp) {
+        lamp.castShadow = true;
+        lamp.shadow.mapSize.set(1024, 1024);
+        lamp.shadow.radius = 4;          // zachte randen
+        lamp.shadow.bias = -0.0008;
+        eersteLamp = false;
+      }
+      scene.add(lamp);
+      hangLampen.push({ light: lamp, basis: lamp.intensity });
+    }
+
+    // ── Algemene sfeerverlichting: warm en gedempt ───────────────────────
+    // Lage, warme basis zodat niets pikzwart is maar het knus blijft.
+    const ambient = new THREE.AmbientLight(0xffd9b0, 0.22);
+    scene.add(ambient);
+    // Warme/koele hemisfeer voor zachte vorm (warm boven, donker onder)
+    const hemi = new THREE.HemisphereLight(0xffb877, 0x140d08, 0.30);
+    scene.add(hemi);
+
+    // ╔════════════════════════════════════════════════════════════════════╗
+    // ║  LICHT-STANDEN — roep aan vanuit een cue met:                       ║
+    // ║      zetLichtstand('normaal' | 'apocalyptisch' | 'hemels')         ║
+    // ║  Elke overgang verloopt vloeiend in LICHT_DUUR seconden.           ║
+    // ║  Pas gerust de getallen/kleuren per stand hieronder aan.           ║
+    // ╚════════════════════════════════════════════════════════════════════╝
+    const LICHT_DUUR = 6.0;   // duur van de overgang (seconden)
+
+    //  ambientI/hemiI = sterkte zaallicht • hangF = factor hanglampen
+    //  schermI = sterkte schermlicht • bolC = kleur lichtbollen
+    //  draadC = kleur-tint over de draadwand (wit = oorspronkelijke kleuren)
+    const lichtStanden = {
+      normaal:       { ambientI:0.22, ambientC:0xffd9b0, hemiI:0.30, hemiC:0xffb877,
+                       hangF:1.0,  schermI:1.2, bolC:0xfff1d8, draadC:0xffffff },
+      apocalyptisch: { ambientI:0.03, ambientC:0x7184a0, hemiI:0.04, hemiC:0x44566a,
+                       hangF:0.04, schermI:3.6, bolC:0x1e160f, draadC:0x6e5256 },
+      hemels:        { ambientI:0.55, ambientC:0xfff0d8, hemiI:0.62, hemiC:0xffe0b0,
+                       hangF:1.7,  schermI:1.0, bolC:0xffffff, draadC:0xffd9a0 },
+    };
+
+    // --- Motor van de lichtstanden (hier hoef je niets aan te passen) ---
+    let huidigeHangF = 1.0;            // huidige factor van de hanglampen
+    let lichtTween = null;            // lopende overgang (of null)
+    const _lichtKleur = new THREE.Color();
+
+    function zetLichtstand(naam) {
+      const doel = lichtStanden[naam];
+      if (!doel) { console.warn('Onbekende lichtstand:', naam); return; }
+      lichtTween = {
+        t: 0,
+        from: {
+          ambientI: ambient.intensity, ambientC: ambient.color.clone(),
+          hemiI: hemi.intensity,       hemiC: hemi.color.clone(),
+          hangF: huidigeHangF,         schermI: schermLicht.intensity,
+          bolC: matBol.color.clone(),  draadC: draadMat.color.clone(),
+        },
+        to: doel,
+      };
+    }
+
+    function stapLichtTween(dt) {
+      if (!lichtTween) return;
+      lichtTween.t += dt;
+      const p = Math.min(lichtTween.t / LICHT_DUUR, 1);
+      const e = p * p * (3 - 2 * p);          // smoothstep: zacht in en uit
+      const f = lichtTween.from, to = lichtTween.to;
+      ambient.intensity = f.ambientI + (to.ambientI - f.ambientI) * e;
+      ambient.color.copy(f.ambientC).lerp(_lichtKleur.setHex(to.ambientC), e);
+      hemi.intensity = f.hemiI + (to.hemiI - f.hemiI) * e;
+      hemi.color.copy(f.hemiC).lerp(_lichtKleur.setHex(to.hemiC), e);
+      huidigeHangF = f.hangF + (to.hangF - f.hangF) * e;
+      for (const hl of hangLampen) hl.light.intensity = hl.basis * huidigeHangF;
+      schermLicht.intensity = f.schermI + (to.schermI - f.schermI) * e;
+      matBol.color.copy(f.bolC).lerp(_lichtKleur.setHex(to.bolC), e);
+      draadMat.color.copy(f.draadC).lerp(_lichtKleur.setHex(to.draadC), e);
+      if (p >= 1) lichtTween = null;
+    }
+
+    // ── Pointer Lock (muis kijken) ─────────────────────────────────────────
+    const canvas = renderer.domElement;
+    let vergrendeld = false;
+
+    canvas.addEventListener('click', () => {
+      canvas.requestPointerLock();
+      startTvAftellen();   // vanaf de eerste klik telt de 10 s voor de tv af
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      vergrendeld = document.pointerLockElement === canvas;
+      document.getElementById('info').textContent = vergrendeld
+        ? 'WASD = bewegen  |  Muis = kijken  |  ESC = stoppen'
+        : 'Klik om te beginnen  |  WASD = bewegen  |  Muis = kijken  |  ESC = stoppen';
+    });
+
+    // Kijkrichting bijhouden via Euler
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    document.addEventListener('mousemove', (e) => {
+      if (!vergrendeld) return;
+      const gevoeligheid = 0.002;
+      euler.y -= e.movementX * gevoeligheid;
+      euler.x -= e.movementY * gevoeligheid;
+      // Begrenzen zodat je niet ondersteboven kijkt
+      euler.x = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, euler.x));
+      camera.quaternion.setFromEuler(euler);
+    });
+
+    // ── Toetsenbord ────────────────────────────────────────────────────────
+    const toetsen = {};
+    document.addEventListener('keydown', (e) => { toetsen[e.code] = true; });
+    document.addEventListener('keyup',   (e) => { toetsen[e.code] = false; });
+
+    const snelheid   = 3;      // meter per seconde
+    const klok       = new THREE.Clock();
+    const richting   = new THREE.Vector3();
+    const zijwaarts  = new THREE.Vector3();
+    const beweging   = new THREE.Vector3();
+
+    // Grenzen zodat je niet door de wand loopt (kleine marge)
+    const marge = 0.3;
+    const minX = -B/2 + marge, maxX = B/2 - marge;
+    const minZ = -L/2 + marge, maxZ = L/2 - marge;
+
+    // ╔════════════════════════════════════════════════════════════════════╗
+    // ║  POST-PROCESSING (EffectComposer) — filmische polish, licht gehouden ║
+    // ╚════════════════════════════════════════════════════════════════════╝
+    // STAP 1 — Bloom: bollampen, scherm en de neon-tekst gloeien zacht na.
+    // ── Bloom bijregelen (hoger = meer gloed) ──
+    const BLOOM_STERKTE = 0.75;  // hoe fel de uitstraling
+    const BLOOM_STRAAL  = 0.40;  // hoe ver de gloed uitwaaiert
+    const BLOOM_DREMPEL = 0.85;  // vanaf welke helderheid iets gloeit (hoger = alleen de felste delen)
+
+    const composer = new EffectComposer(renderer);
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(window.innerWidth, window.innerHeight);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      BLOOM_STERKTE, BLOOM_STRAAL, BLOOM_DREMPEL);
+    composer.addPass(bloomPass);
+    composer.addPass(new OutputPass());   // tone mapping + juiste kleuren
+
+    // STAP 2 — lichte warme kleurcorrectie (filmische look)
+    // ── Warmte bijregelen ──
+    const WARMTE = 0.12;   // 0 = neutraal, hoger = warmer (rood/geel op, blauw neer)
+    const warmGradeShader = {
+      uniforms: { tDiffuse: { value: null }, warmte: { value: WARMTE } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float warmte;
+        varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(tDiffuse, vUv);
+          vec3 tint = vec3(1.0 + warmte * 0.16, 1.0 + warmte * 0.04, 1.0 - warmte * 0.12);
+          c.rgb *= tint;                         // warme tint
+          c.rgb = (c.rgb - 0.5) * 1.04 + 0.5;    // heel licht contrast voor "film"
+          gl_FragColor = c;
+        }`,
+    };
+    const warmPass = new ShaderPass(warmGradeShader);
+    composer.addPass(warmPass);
+
+    // STAP 3 — subtiele vignette (iets donkerder randen, voor focus)
+    // ── Vignette bijregelen ──
+    const VIGNETTE = 0.35;   // 0 = uit, hoger = donkerder randen
+    const vignetteShader = {
+      uniforms: { tDiffuse: { value: null }, sterkte: { value: VIGNETTE } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float sterkte;
+        varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(tDiffuse, vUv);
+          float r = length(vUv - 0.5);              // 0 in het midden, ~0.7 in de hoeken
+          float vig = 1.0 - sterkte * smoothstep(0.35, 0.75, r);
+          c.rgb *= vig;
+          gl_FragColor = c;
+        }`,
+    };
+    const vignettePass = new ShaderPass(vignetteShader);
+    composer.addPass(vignettePass);
+
+    // ── Animatielus ────────────────────────────────────────────────────────
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = klok.getDelta();
+
+      if (vergrendeld) {
+        // Voorwaartse richting (horizontaal, zonder Y-component)
+        camera.getWorldDirection(richting);
+        richting.y = 0;
+        richting.normalize();
+
+        // Zijwaartse richting
+        zijwaarts.crossVectors(richting, camera.up).normalize();
+
+        beweging.set(0, 0, 0);
+
+        if (toetsen['KeyW'] || toetsen['ArrowUp'])    beweging.addScaledVector(richting,  snelheid * dt);
+        if (toetsen['KeyS'] || toetsen['ArrowDown'])  beweging.addScaledVector(richting, -snelheid * dt);
+        if (toetsen['KeyA'] || toetsen['ArrowLeft'])  beweging.addScaledVector(zijwaarts, -snelheid * dt);
+        if (toetsen['KeyD'] || toetsen['ArrowRight']) beweging.addScaledVector(zijwaarts,  snelheid * dt);
+
+        camera.position.add(beweging);
+
+        // Botsingsdetectie wanden
+        camera.position.x = Math.max(minX, Math.min(maxX, camera.position.x));
+        camera.position.z = Math.max(minZ, Math.min(maxZ, camera.position.z));
+        // Ooghoogte vasthouden
+        camera.position.y = 1.7;
+      }
+
+      // Crossfade van de achtergrond achter de ramen (loopt altijd door)
+      if (achtergrondFadeActief) {
+        achtergrondFadeT += dt;
+        const p = Math.min(achtergrondFadeT / CROSSFADE_SEC, 1);
+        matVoor.opacity = p;
+        if (p >= 1) {
+          // Klaar: nieuwe afbeelding wordt het achtervlak, voorvlak weer leeg.
+          matAchter.map = matVoor.map;
+          matAchter.needsUpdate = true;
+          matVoor.opacity = 0;
+          achtergrondFadeActief = false;
+        }
+      }
+
+      // Lichtstand-overgang (zaallicht, scherm, bollen, draadwand-tint)
+      stapLichtTween(dt);
+
+      composer.render();   // via post-processing in plaats van renderer.render
+    }
+
+    animate();
+
+    // ── Venster resize ─────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
