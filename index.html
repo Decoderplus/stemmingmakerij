@@ -688,12 +688,23 @@
     }
 
     // De AudioContext start 'suspended' en moet ná een gebruikersactie hervat
-    // worden, anders blijft hij stil. Doe dat bij de eerste klik/toets.
-    function ontgrendelEffecten() {
+    // worden. Ook de video-elementen moeten op een telefoon binnen een tik
+    // worden 'ontgrendeld', anders weigert mobiel ze later (op de timer) te
+    // laden/spelen. Doe beide bij de eerste klik/tik/toets.
+    let mediaOntgrendeld = false;
+    function ontgrendelMedia() {
       if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (mediaOntgrendeld) return;
+      mediaOntgrendeld = true;
+      // Elk videodeel kort (muted) starten en pauzeren → daarna mag het spelen.
+      for (const d of delen) {
+        d.v.muted = true;
+        d.v.play().then(() => { d.v.pause(); d.v.currentTime = 0; d.v.muted = false; })
+                  .catch(() => { d.v.muted = false; });
+      }
     }
-    window.addEventListener('pointerdown', ontgrendelEffecten);
-    window.addEventListener('keydown',     ontgrendelEffecten);
+    window.addEventListener('pointerdown', ontgrendelMedia);
+    window.addEventListener('keydown',     ontgrendelMedia);
 
     // ╔═══════════════════════════════════════════════════════════════════╗
     // ║  CUE-LIJST — koppel gebeurtenissen aan momenten in de video.       ║
