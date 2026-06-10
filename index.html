@@ -554,10 +554,16 @@
       v.muted = false;            // geluid AAN
       v.loop = false;             // niet los herhalen; we schakelen zelf door
       v.playsInline = true;
+      v.setAttribute('playsinline', '');       // iOS: inline afspelen
+      v.setAttribute('webkit-playsinline', '');
       v.preload = 'auto';         // alle delen vast voorladen → naadloze overgang
       v.crossOrigin = 'anonymous';
       v.addEventListener('error', () =>
         console.warn('Videodeel niet gevonden of niet afspeelbaar:', bestand));
+      // Onzichtbaar in de pagina hangen: telefoons sturen alleen frames naar de
+      // 3D-textuur als de video écht in de DOM staat (anders bevriest het beeld).
+      v.style.cssText = 'position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:0;bottom:0;z-index:-1;';
+      document.body.appendChild(v);
       const tex = new THREE.VideoTexture(v);
       tex.colorSpace = THREE.SRGBColorSpace;
       return { bestand, v, tex, duur: 0 };
