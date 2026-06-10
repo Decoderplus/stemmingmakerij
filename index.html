@@ -2,7 +2,8 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <title>3D Kamer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Stemmingmakerij</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; background: #000; }
@@ -40,6 +41,28 @@
 
     /* #info en #crosshair pas tonen zodra de wereld start */
     #info, #crosshair { display: none; }
+
+    /* ── Mobiele touch-besturing (alleen op telefoons, na de start) ───────── */
+    #mobiel { display: none; }
+    body.mobiel-actief #mobiel { display: block; }
+    #joystick {
+      position: fixed; left: 22px; bottom: 26px; z-index: 60;
+      width: 130px; height: 130px; border-radius: 50%;
+      background: rgba(40,28,16,0.30); border: 1px solid rgba(230,160,80,0.40);
+      touch-action: none;
+    }
+    #joyknop {
+      position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
+      margin: -29px 0 0 -29px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffce8a, #c8741e);
+      box-shadow: 0 0 14px rgba(255,170,80,0.6);
+    }
+    #mobielhint {
+      position: fixed; bottom: 34px; right: 18px; z-index: 60;
+      color: #e3cba6; font-family: Georgia, serif; font-size: 13px;
+      line-height: 1.5; text-align: right; opacity: 0.85; max-width: 46vw;
+      pointer-events: none; text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+    }
 
     /* ── Startscherm / menu / credits / laadscherm ─────────────────────── */
     #overlay {
@@ -99,11 +122,29 @@
     #laadscherm:not(.verborgen) .laadvulling { animation: vullen 3s linear forwards; }
     @keyframes vullen { from { width: 0; } to { width: 100%; } }
     #overlay .laadtekst { font-size: 15px; color: #b89576; letter-spacing: 2px; }
+
+    /* Smalle (staande) telefoonschermen: alles passend schalen */
+    @media (max-width: 520px) {
+      #overlay .scherm { padding: 24px 14px; }
+      #overlay .titel { font-size: clamp(26px, 9vw, 60px); }
+      #overlay .ondertitel { font-size: 12px; letter-spacing: 2px; margin-bottom: 30px; }
+      #overlay .menu { width: 80vw; max-width: 320px; }
+      #overlay .knop { font-size: 19px; }
+      #overlay .subtitel { font-size: 24px; }
+      #overlay .credittekst { font-size: 16px; line-height: 1.6; }
+      #overlay .laadbalk { width: 70vw; max-width: 300px; }
+    }
   </style>
 </head>
 <body>
   <div id="info">Klik om te beginnen &nbsp;|&nbsp; WASD = bewegen &nbsp;|&nbsp; Muis = kijken &nbsp;|&nbsp; ESC = stoppen</div>
   <div id="crosshair"></div>
+
+  <!-- Mobiele touch-besturing (verschijnt alleen op telefoons) -->
+  <div id="mobiel">
+    <div id="joystick"><div id="joyknop"></div></div>
+    <div id="mobielhint">Sleep om te kijken<br>Joystick om te lopen</div>
+  </div>
 
   <!-- Startscherm / menu / credits / laadscherm -->
   <div id="overlay">
@@ -155,6 +196,7 @@
           overlay.remove();                          // wereld onthullen
           document.getElementById('info').style.display = 'block';
           document.getElementById('crosshair').style.display = 'block';
+          window.dispatchEvent(new Event('wereldStart'));  // signaal voor de 3D-wereld
         }, 3000);
       });
     })();
@@ -923,10 +965,11 @@
     // ── Pointer Lock (muis kijken) ─────────────────────────────────────────
     const canvas = renderer.domElement;
     let vergrendeld = false;
+    const isMobiel = window.matchMedia('(pointer: coarse)').matches || location.search.includes('mobiel');  // telefoon/tablet?
 
     canvas.addEventListener('click', () => {
-      canvas.requestPointerLock();
-      startTvAftellen();   // vanaf de eerste klik telt de 10 s voor de tv af
+      if (!isMobiel) canvas.requestPointerLock();   // pointer-lock alleen op desktop
+      startTvAftellen();   // vanaf de eerste interactie telt de 10 s voor de tv af
     });
 
     document.addEventListener('pointerlockchange', () => {
@@ -952,6 +995,73 @@
     const toetsen = {};
     document.addEventListener('keydown', (e) => { toetsen[e.code] = true; });
     document.addEventListener('keyup',   (e) => { toetsen[e.code] = false; });
+
+    // ── Mobiele touch-besturing ──────────────────────────────────────────
+    let mobielActief = false;
+    const mobielBeweeg = { x: 0, y: 0 };   // joystick: x = zijwaarts, y = vooruit(+)/achteruit(-)
+
+    // De wereld start (na het laadscherm): op een telefoon de touch-besturing aan.
+    window.addEventListener('wereldStart', () => {
+      if (!isMobiel) return;
+      mobielActief = true;
+      document.body.classList.add('mobiel-actief');
+      document.getElementById('info').style.display = 'none';  // desktop-uitleg verbergen
+      startTvAftellen();                                       // tv start vanzelf na 10 s
+    });
+
+    if (isMobiel) {
+      const joystickEl = document.getElementById('joystick');
+      const knopEl     = document.getElementById('joyknop');
+      const joyR = 50;             // maximale uitslag van de knop (px)
+      let joyId = null;
+
+      function joyUpdate(e) {
+        for (const t of e.changedTouches) {
+          if (t.identifier !== joyId) continue;
+          const r = joystickEl.getBoundingClientRect();
+          let dx = t.clientX - (r.left + r.width / 2);
+          let dy = t.clientY - (r.top + r.height / 2);
+          const len = Math.hypot(dx, dy) || 1;
+          const k = Math.min(len, joyR) / len;
+          dx *= k; dy *= k;
+          knopEl.style.transform = `translate(${dx}px, ${dy}px)`;
+          mobielBeweeg.x =  dx / joyR;     // rechts = +
+          mobielBeweeg.y = -dy / joyR;     // omhoog = vooruit (+)
+        }
+      }
+      joystickEl.addEventListener('touchstart', (e) => { joyId = e.changedTouches[0].identifier; joyUpdate(e); }, { passive: true });
+      joystickEl.addEventListener('touchmove',  joyUpdate, { passive: true });
+      const joyEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === joyId) { joyId = null; mobielBeweeg.x = 0; mobielBeweeg.y = 0; knopEl.style.transform = ''; } };
+      joystickEl.addEventListener('touchend',    joyEnd, { passive: true });
+      joystickEl.addEventListener('touchcancel', joyEnd, { passive: true });
+
+      // KIJKEN: een vinger elders op het scherm sleept de camera rond.
+      let kijkId = null, kijkX = 0, kijkY = 0;
+      const gevoeligheidT = 0.005;
+      window.addEventListener('touchstart', (e) => {
+        if (!mobielActief || kijkId !== null) return;
+        const jr = joystickEl.getBoundingClientRect();
+        for (const t of e.changedTouches) {
+          if (t.identifier === joyId) continue;
+          if (t.clientX >= jr.left && t.clientX <= jr.right && t.clientY >= jr.top && t.clientY <= jr.bottom) continue;
+          kijkId = t.identifier; kijkX = t.clientX; kijkY = t.clientY; break;
+        }
+      }, { passive: true });
+      window.addEventListener('touchmove', (e) => {
+        if (kijkId === null) return;
+        for (const t of e.changedTouches) {
+          if (t.identifier !== kijkId) continue;
+          euler.y -= (t.clientX - kijkX) * gevoeligheidT;
+          euler.x -= (t.clientY - kijkY) * gevoeligheidT;
+          euler.x = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, euler.x));
+          camera.quaternion.setFromEuler(euler);
+          kijkX = t.clientX; kijkY = t.clientY;
+        }
+      }, { passive: true });
+      const kijkEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === kijkId) kijkId = null; };
+      window.addEventListener('touchend',    kijkEnd, { passive: true });
+      window.addEventListener('touchcancel', kijkEnd, { passive: true });
+    }
 
     const snelheid   = 3;      // meter per seconde
     const klok       = new THREE.Clock();
@@ -1035,7 +1145,7 @@
 
       const dt = klok.getDelta();
 
-      if (vergrendeld) {
+      if (vergrendeld || mobielActief) {
         // Voorwaartse richting (horizontaal, zonder Y-component)
         camera.getWorldDirection(richting);
         richting.y = 0;
@@ -1046,10 +1156,17 @@
 
         beweging.set(0, 0, 0);
 
+        // Toetsenbord (desktop)
         if (toetsen['KeyW'] || toetsen['ArrowUp'])    beweging.addScaledVector(richting,  snelheid * dt);
         if (toetsen['KeyS'] || toetsen['ArrowDown'])  beweging.addScaledVector(richting, -snelheid * dt);
         if (toetsen['KeyA'] || toetsen['ArrowLeft'])  beweging.addScaledVector(zijwaarts, -snelheid * dt);
         if (toetsen['KeyD'] || toetsen['ArrowRight']) beweging.addScaledVector(zijwaarts,  snelheid * dt);
+
+        // Joystick (mobiel)
+        if (mobielActief) {
+          beweging.addScaledVector(richting,  mobielBeweeg.y * snelheid * dt);
+          beweging.addScaledVector(zijwaarts, mobielBeweeg.x * snelheid * dt);
+        }
 
         camera.position.add(beweging);
 
